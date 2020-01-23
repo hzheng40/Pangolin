@@ -9,6 +9,17 @@
 
 namespace py_pangolin {
 
+    bool is_packed(const pybind11::buffer_info & info) {
+      int next_expected_stride = info.itemsize;
+      for (int i = info.ndim-1; i >= 0; --i) {
+        if (!(info.strides[i] == next_expected_stride)) {
+          return false;
+        }
+        next_expected_stride *= info.shape[i];
+      }
+      return true;
+    }
+
     void bind_gl(pybind11::module & m) {
 
         pybind11::class_<pangolin::GlTexture, std::shared_ptr<pangolin::GlTexture>>(m, "GlTexture")
@@ -141,18 +152,40 @@ namespace py_pangolin {
 
             .def_readwrite("height", &pangolin::GlTexture::height)
 
-            // move constructor
-            // move assignment
-            // private copy constructor
-
         ;
 
-        // GlRenderBuffer
-        // GlFramebuffer
-        // GlBufferType
-        // GlBuffer
-        // GlSizeableBuffer
-        // 
-    }
+        pybind11::class_<pangolin::GlRenderBuffer>(m, "GlRenderBuffer")
+        .def(pybind11::init<GLint, GLint, GLint>(), pybind11::arg("width")=0, pybind11::arg("height")=0, pybind11::arg("internal_format") = GL_DEPTH_COMPONENT24)
+        .def("Reinitialise", &pangolin::GlRenderBuffer::Reinitialise);
+
+      pybind11::class_<pangolin::GlFramebuffer>(m, "GlFramebuffer")
+        .def(pybind11::init<pangolin::GlTexture &, pangolin::GlRenderBuffer &>())
+        .def("Bind", &pangolin::GlFramebuffer::Bind)
+        .def("Unbind", &pangolin::GlFramebuffer::Unbind);
+
+      pybind11::enum_<pangolin::GlBufferType>(m, "GlBufferType")
+        .value("GlUndefined", pangolin::GlBufferType::GlUndefined)
+        .value("GlArrayBuffer", pangolin::GlBufferType::GlArrayBuffer)
+        .value("GlElementArrayBuffer", pangolin::GlBufferType::GlElementArrayBuffer)
+  #ifndef HAVE_GLES
+        .value("GlPixelPackBuffer", pangolin::GlBufferType::GlPixelPackBuffer)
+        .value("GlPixelUnpackBuffer", pangolin::GlBufferType::GlPixelUnpackBuffer)
+        .value("GlShaderStorageBuffer", pangolin::GlBufferType::GlShaderStorageBuffer)
+  #endif
+        .export_values();
+
+      pybind11::class_<pangolin::GlBufferData>(m, "GlBufferData")
+        .def(pybind11::init<>())
+        .def("Reinitialise", [](pangolin::GlBufferData & gl_buffer, pangolin::GlBufferType buffer_type, GLuint size_bytes, GLenum gl_use) {
+          gl_buffer.Reinitialise(buffer_type, size_bytes, gl_use);
+        })
+        .def("Bind", &pangolin::GlBufferData::Bind)
+        .def("Unbind", &pangolin::GlBufferData::Unbind)
+        .def("Upload", [](pangolin::GlBufferData & gl_buffer, pybind11::buffer b, GLsizeiptr size_bytes, GLintptr offset) {
+          pybind11::buffer_info info = b.request();
+          gl_buffer.Upload(info.ptr, size_bytes, offset);
+        }, pybind11::arg("data"), pybind11::arg("size_bytes"), pybind11::arg("offset")=0)
+        .def_readwrite("size_bytes", &pangolin::GlBufferData::size_bytes);
+      }
 
 }  // py_pangolin
